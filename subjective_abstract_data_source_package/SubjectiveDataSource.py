@@ -3,10 +3,6 @@ from brainboost_data_tools_logger_package.BBLogger import BBLogger
 import os
 import json
 from datetime import datetime
-try:
-    from brainboost_configuration_package.BBConfig import BBConfig
-except Exception:
-    BBConfig = None
 
 
 class SubjectiveDataSource(ABC):
@@ -66,17 +62,6 @@ class SubjectiveDataSource(ABC):
         return data_source_type_name
 
     def _resolve_context_path(self):
-        try:
-            if BBConfig is not None:
-                custom_cfg = '/brainboost/global.config'
-                if os.path.isfile(custom_cfg):
-                    try:
-                        BBConfig.configure(custom_cfg)
-                    except Exception:
-                        pass
-                return BBConfig.get('context_path')
-        except Exception:
-            pass
         return '/context'
 
     def _write_context_output(self, data):
