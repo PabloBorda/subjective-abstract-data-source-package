@@ -1,5 +1,12 @@
 from abc import ABC, abstractmethod
-from brainboost_data_source_logger_package.BBLogger import BBLogger
+from brainboost_data_tools_logger_package.BBLogger import BBLogger
+import os
+import json
+from datetime import datetime
+try:
+    from brainboost_configuration_package.BBConfig import BBConfig
+except Exception:
+    BBConfig = None
 
 
 class SubjectiveDataSource(ABC):
@@ -23,6 +30,10 @@ class SubjectiveDataSource(ABC):
             ds.start()
 
     def update(self, data):
+        try:
+            self._write_context_output(data)
+        except Exception as e:
+            BBLogger.log(f"Failed writing context output: {e}", level="error")
         for subscriber in self.subscribers:
             subscriber.notify(data)
 
@@ -45,6 +56,43 @@ class SubjectiveDataSource(ABC):
         class_name = self.__class__.__name__
         data_source_type_name = class_name.replace('Subjective', '').replace('RealTimeDataSource', '').replace('DataSource', '')
         return data_source_type_name
+
+    def _resolve_context_path(self):
+        try:
+            if BBConfig is not None:
+                custom_cfg = '/brainboost/global.config'
+                if os.path.isfile(custom_cfg):
+                    try:
+                        BBConfig.configure(custom_cfg)
+                    except Exception:
+                        pass
+                return BBConfig.get('context_path')
+        except Exception:
+            pass
+        return '/context'
+
+    def _write_context_output(self, data):
+        context_dir = self._resolve_context_path()
+        try:
+            os.makedirs(context_dir, exist_ok=True)
+        except Exception:
+            pass
+
+        datasource_name = self.get_data_source_type_name()
+        ts = datetime.now().strftime('%Y%m%d%H%M%S')
+        filename = f"context-{ts}-{datasource_name}.json"
+        path = os.path.join(context_dir, filename)
+
+        payload = data
+        if not isinstance(payload, (dict, list)):
+            payload = {"value": payload}
+
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, indent=2, default=str)
+        try:
+            os.chmod(path, 0o666)
+        except Exception:
+            pass
 
     # === Abstract methods that must be implemented by each data source ===
     @abstractmethod

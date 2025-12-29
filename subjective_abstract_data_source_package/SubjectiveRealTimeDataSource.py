@@ -1,14 +1,16 @@
-# File: data_source_abstract/SubjectiveDataSource.py
+# File: SubjectiveRealTimeDataSource.py
 
 import asyncio
 import json
 import logging
 import threading
-from data_source_abstract.SubjectiveDataSource import SubjectiveDataSource
-from brainboost_data_source_logger_package.BBLogger import BBLogger  # Ensure BBLogger is correctly implemented
+import time
+from abc import abstractmethod
+from .SubjectiveDataSource import SubjectiveDataSource
+from brainboost_data_tools_logger_package.BBLogger import BBLogger  # Ensure BBLogger is correctly implemented
 
 
-class SubjectiveDataSource(SubjectiveDataSource):
+class SubjectiveRealTimeDataSource(SubjectiveDataSource):
     # Internal host and port (not exposed to users)
     _HOST = 'localhost'
     _PORT = 65432  # Fixed port for simplicity; adjust as needed
@@ -26,6 +28,8 @@ class SubjectiveDataSource(SubjectiveDataSource):
         self._loop = asyncio.new_event_loop()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
+        self._monitoring_active = False
+        self._monitoring_thread = None
         BBLogger.log("Asyncio event loop started in a separate thread.")
 
     def _run_loop(self):
@@ -91,15 +95,128 @@ class SubjectiveDataSource(SubjectiveDataSource):
         timer.start()
         BBLogger.log("Scheduled mock data update to be sent after 10 seconds.")
 
+    # Enhanced Real-Time Data Source Methods
+    
+    def start_monitoring(self):
+        """
+        Start real-time monitoring. This method should be implemented by subclasses
+        to define their specific monitoring behavior (file system, network, etc.).
+        """
+        if self._monitoring_active:
+            BBLogger.log("Monitoring is already active")
+            return
+            
+        BBLogger.log(f"Starting monitoring for {self.__class__.__name__}")
+        self._monitoring_active = True
+        
+        # Start the monitoring implementation
+        try:
+            self._initialize_monitoring()
+            self._start_monitoring_implementation()
+            BBLogger.log(f"Monitoring started successfully for {self.__class__.__name__}")
+        except Exception as e:
+            self._monitoring_active = False
+            BBLogger.log(f"Failed to start monitoring: {e}")
+            raise
+
+    def stop_monitoring(self):
+        """
+        Stop real-time monitoring.
+        """
+        if not self._monitoring_active:
+            BBLogger.log("Monitoring is not active")
+            return
+            
+        BBLogger.log(f"Stopping monitoring for {self.__class__.__name__}")
+        self._monitoring_active = False
+        
+        try:
+            self._stop_monitoring_implementation()
+            BBLogger.log(f"Monitoring stopped successfully for {self.__class__.__name__}")
+        except Exception as e:
+            BBLogger.log(f"Error while stopping monitoring: {e}")
+
+    def _initialize_monitoring(self):
+        """
+        Initialize monitoring resources. Override in subclasses if needed.
+        """
+        pass
+
+    def _start_monitoring_implementation(self):
+        """
+        Implementation-specific monitoring start. Override in subclasses.
+        Default implementation starts the TCP server and mock data.
+        """
+        self._start_server()
+        self._schedule_mock_update()
+
+    def _stop_monitoring_implementation(self):
+        """
+        Implementation-specific monitoring stop. Override in subclasses.
+        Default implementation stops the TCP server.
+        """
+        self._stop_server()
+
+    def send_notification(self, notification_data):
+        """
+        Send a notification to all subscribers with the provided data.
+        This is the main method subclasses should use to send real-time updates.
+        
+        :param notification_data: Dictionary containing the notification data
+        """
+        try:
+            # Add timestamp if not present
+            if 'timestamp' not in notification_data:
+                notification_data['timestamp'] = time.time()
+                
+            BBLogger.log(f"Sending real-time notification: {notification_data}")
+            self.update(notification_data)  # Notify subscribers
+            
+        except Exception as e:
+            BBLogger.log(f"Error sending notification: {e}")
+
+    def send_redis_notification(self, channel, notification_data):
+        """
+        Send a notification via Redis channel (if Redis is available).
+        
+        :param channel: Redis channel name
+        :param notification_data: Dictionary containing the notification data
+        """
+        try:
+            import redis
+            from com_subjective_utils.config import config
+            
+            # Create Redis connection
+            redis_host = config.get('REDIS_SERVER_IP', 'localhost')
+            redis_port = config.get('REDIS_SERVER_PORT', 6379)
+            
+            redis_client = redis.Redis(host=redis_host, port=redis_port, db=0)
+            
+            # Add timestamp if not present
+            if 'timestamp' not in notification_data:
+                notification_data['timestamp'] = time.time()
+                
+            # Publish to Redis channel
+            message = json.dumps(notification_data)
+            redis_client.publish(channel, message)
+            
+            BBLogger.log(f"Sent Redis notification to channel '{channel}': {notification_data}")
+            
+        except ImportError:
+            BBLogger.log("Redis not available for notifications")
+        except Exception as e:
+            BBLogger.log(f"Error sending Redis notification: {e}")
+
     def subscribe(self, subscriber):
         """
-        Subscribe a subscriber and initiate listening and mock data sending.
+        Subscribe a subscriber and initiate listening.
 
         :param subscriber: An instance of BBSubscriber to be notified.
         """
         super().subscribe(subscriber)
-        self._start_server()
-        self._schedule_mock_update()
+        # Start monitoring when first subscriber is added
+        if len(self.subscribers) == 1:
+            self.start_monitoring()
 
     def _stop_server(self):
         """Stop the server and close all connections."""
@@ -117,10 +234,15 @@ class SubjectiveDataSource(SubjectiveDataSource):
         BBLogger.log("Real-time Data Source Server stopped and event loop terminated.")
 
     def stop(self):
-        """Public method to gracefully shut down the server."""
+        """Public method to gracefully shut down the data source."""
+        self.stop_monitoring()
         self._stop_server()
 
     def fetch(self):
-        """Implement the abstract fetch method. Left empty as per requirements."""
-        pass
+        """
+        Implement the abstract fetch method. For real-time data sources,
+        this typically starts monitoring rather than fetching static data.
+        """
+        BBLogger.log(f"Fetch called on real-time data source {self.__class__.__name__}")
+        self.start_monitoring()
 

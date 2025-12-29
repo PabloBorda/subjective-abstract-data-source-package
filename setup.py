@@ -49,7 +49,7 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "brainboost-data-source-logger-package>=1.0.0",
+        "brainboost-data-tools-logger-package>=1.0.0",
     ],
     extras_require={
         "dev": [
