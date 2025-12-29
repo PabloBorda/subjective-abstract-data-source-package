@@ -50,6 +50,7 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "brainboost-data-tools-logger-package>=1.0.0",
+        "alive-progress>=3.1.5",
     ],
     extras_require={
         "dev": [

@@ -18,11 +18,16 @@ class SubjectiveDataSource(ABC):
         self.params = params or {}
         self.progress_callback = None  # Initialize the progress callback to None
         self.status_callback = None    # Initialize the status callback to None
+        self._progress_enabled = False
+        self._progress_bar_ctx = None
+        self._progress_bar = None
+        self._progress_bar_total = None
         # progress variables normal to all datasources
         self._total_items = 0
         self._processed_items = 0
         self._total_processing_time = 0.0
         self._fetch_completed = False
+        self._configure_progress_from_params()
 
     def start(self):
         for ds in self.dependency_data_sources:
@@ -30,6 +35,9 @@ class SubjectiveDataSource(ABC):
             ds.start()
 
     def update(self, data):
+        # Treat each update as one processed item and emit progress updates.
+        self.increment_processed_items()
+        self._emit_progress()
         try:
             self._write_context_output(data)
         except Exception as e:
@@ -144,7 +152,11 @@ class SubjectiveDataSource(ABC):
         Calculated as:
           remaining_to_process() * average_time_per_item()
         """
-        remaining = self.remaining_to_process() * self.average_time_per_item()
+        remaining_to_process = self.remaining_to_process()
+        if remaining_to_process is None:
+            BBLogger.log("Total items unknown; cannot estimate remaining time")
+            return None
+        remaining = remaining_to_process * self.average_time_per_item()
         BBLogger.log(f"Estimated remaining time: {remaining} seconds")
         return remaining
 
@@ -166,7 +178,11 @@ class SubjectiveDataSource(ABC):
         By default, this is calculated as:
           total_to_process() - total_processed()
         """
-        remaining = self.get_total_to_process() - self.get_total_processed()
+        total = self.get_total_to_process()
+        if total <= 0:
+            BBLogger.log("Total items unknown; remaining items cannot be computed")
+            return None
+        remaining = total - self.get_total_processed()
         BBLogger.log(f"Remaining items to process: {remaining}")
         return remaining
 
@@ -178,6 +194,8 @@ class SubjectiveDataSource(ABC):
     def set_total_items(self, total_items):
         self._total_items = total_items
         BBLogger.log(f"Set total items to: {total_items}")
+        if self._progress_enabled:
+            self._ensure_progress_bar(restart_if_unknown=True)
 
     def set_processed_items(self, processed_items):
         self._processed_items = processed_items
@@ -190,6 +208,8 @@ class SubjectiveDataSource(ABC):
     def set_fetch_completed(self, fetch_completed=False):
         self._fetch_completed = fetch_completed
         BBLogger.log(f"Set fetch completed to: {fetch_completed}")
+        if fetch_completed:
+            self._close_progress_bar()
 
     def average_time_per_item(self):
         if self.get_total_processed() == 0:
@@ -198,3 +218,73 @@ class SubjectiveDataSource(ABC):
         avg = self.get_total_processing_time() / self.get_total_processed()
         BBLogger.log(f"Calculated average time per item: {avg} seconds")
         return avg
+
+    def _emit_progress(self):
+        if self._progress_enabled:
+            self._ensure_progress_bar()
+            if self._progress_bar:
+                try:
+                    self._progress_bar()
+                except Exception as e:
+                    BBLogger.log(f"Progress bar update failed: {e}", level="warning")
+        total_items = self.get_total_to_process()
+        processed_items = self.get_total_processed()
+        estimated_time = None if total_items <= 0 else self.estimated_remaining_time()
+        if self.progress_callback:
+            try:
+                self.progress_callback(self.get_name(), total_items, processed_items, estimated_time)
+            except Exception as e:
+                BBLogger.log(f"Progress callback failed: {e}", level="error")
+
+    def enable_progress_bar(self, enabled=True):
+        self._progress_enabled = bool(enabled)
+        if self._progress_enabled:
+            self._ensure_progress_bar()
+        else:
+            self._close_progress_bar()
+
+    def _configure_progress_from_params(self):
+        progress_flag = False
+        if isinstance(self.params, dict):
+            progress_flag = bool(self.params.get("progress") or self.params.get("--progress"))
+        elif isinstance(self.params, (list, tuple, set)):
+            progress_flag = "--progress" in self.params or "progress" in self.params
+        if progress_flag:
+            self.enable_progress_bar(True)
+
+    def _ensure_progress_bar(self, restart_if_unknown=False):
+        if not self._progress_enabled:
+            return
+        try:
+            from alive_progress import alive_bar
+        except Exception as e:
+            BBLogger.log(f"alive-progress not available: {e}", level="warning")
+            self._progress_enabled = False
+            return
+
+        total = self.get_total_to_process()
+        total = None if total <= 0 else total
+
+        if self._progress_bar_ctx:
+            if not restart_if_unknown:
+                return
+            if self._progress_bar_total is not None or total is None:
+                return
+            if self.get_total_processed() > 0:
+                return
+            self._close_progress_bar()
+
+        self._progress_bar_ctx = alive_bar(total, title=self.get_name())
+        self._progress_bar = self._progress_bar_ctx.__enter__()
+        self._progress_bar_total = total
+
+    def _close_progress_bar(self):
+        if not self._progress_bar_ctx:
+            return
+        try:
+            self._progress_bar_ctx.__exit__(None, None, None)
+        except Exception as e:
+            BBLogger.log(f"Failed to close progress bar: {e}", level="warning")
+        self._progress_bar_ctx = None
+        self._progress_bar = None
+        self._progress_bar_total = None

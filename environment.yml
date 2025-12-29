@@ -1,0 +1,9 @@
+name: subjective-abstract-data-source
+channels:
+  - conda-forge
+dependencies:
+  - python>=3.8
+  - pip
+  - pip:
+      - brainboost-data-tools-logger-package>=1.0.0
+      - alive-progress>=3.1.5
