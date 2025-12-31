@@ -49,8 +49,10 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=[
-        "brainboost-data-tools-logger-package>=1.0.0",
+        "brainboost-data-source-logger-package @ git+ssh://git@github-personal/PabloBorda/brainboost_data_source_logger_package.git",
+        "brainboost-configuration-package @ git+ssh://git@github-personal/PabloBorda/brainboost_configuration_package.git",
         "alive-progress>=3.1.5",
+        "pandas>=1.5.0",
     ],
     extras_require={
         "dev": [

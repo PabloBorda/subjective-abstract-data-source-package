@@ -1,8 +1,9 @@
 from abc import ABC, abstractmethod
-from brainboost_data_tools_logger_package.BBLogger import BBLogger
+from brainboost_data_source_logger_package.BBLogger import BBLogger
 import os
 import json
 from datetime import datetime
+import tempfile
 
 
 class SubjectiveDataSource(ABC):
@@ -37,7 +38,7 @@ class SubjectiveDataSource(ABC):
         try:
             self._write_context_output(data)
         except Exception as e:
-            BBLogger.log(f"Failed writing context output: {e}", level="error")
+            BBLogger.log(f"Failed writing context output: {e}")
         for subscriber in self.subscribers:
             subscriber.notify(data)
 
@@ -62,7 +63,13 @@ class SubjectiveDataSource(ABC):
         return data_source_type_name
 
     def _resolve_context_path(self):
-        return '/context'
+        override = os.getenv("BB_CONTEXT_DIR")
+        if override:
+            return override
+        default_path = "/context"
+        if os.path.isdir(default_path) and os.access(default_path, os.W_OK):
+            return default_path
+        return os.path.join(tempfile.gettempdir(), "brainboost_context")
 
     def _write_context_output(self, data):
         context_dir = self._resolve_context_path()
@@ -211,7 +218,7 @@ class SubjectiveDataSource(ABC):
                 try:
                     self._progress_bar()
                 except Exception as e:
-                    BBLogger.log(f"Progress bar update failed: {e}", level="warning")
+                    BBLogger.log(f"Progress bar update failed: {e}")
         total_items = self.get_total_to_process()
         processed_items = self.get_total_processed()
         estimated_time = None if total_items <= 0 else self.estimated_remaining_time()
@@ -219,7 +226,7 @@ class SubjectiveDataSource(ABC):
             try:
                 self.progress_callback(self.get_name(), total_items, processed_items, estimated_time)
             except Exception as e:
-                BBLogger.log(f"Progress callback failed: {e}", level="error")
+                BBLogger.log(f"Progress callback failed: {e}")
 
     def enable_progress_bar(self, enabled=True):
         self._progress_enabled = bool(enabled)
@@ -243,7 +250,7 @@ class SubjectiveDataSource(ABC):
         try:
             from alive_progress import alive_bar
         except Exception as e:
-            BBLogger.log(f"alive-progress not available: {e}", level="warning")
+            BBLogger.log(f"alive-progress not available: {e}")
             self._progress_enabled = False
             return
 
@@ -269,7 +276,7 @@ class SubjectiveDataSource(ABC):
         try:
             self._progress_bar_ctx.__exit__(None, None, None)
         except Exception as e:
-            BBLogger.log(f"Failed to close progress bar: {e}", level="warning")
+            BBLogger.log(f"Failed to close progress bar: {e}")
         self._progress_bar_ctx = None
         self._progress_bar = None
         self._progress_bar_total = None

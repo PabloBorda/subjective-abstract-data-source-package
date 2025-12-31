@@ -1,6 +1,9 @@
 import argparse
 import time
+import os
+import tempfile
 from .SubjectiveDataSource import SubjectiveDataSource
+from brainboost_configuration_package.BBConfig import BBConfig
 
 
 class MockProgressDataSource(SubjectiveDataSource):
@@ -40,6 +43,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Progress demo data source")
     parser.add_argument("--progress", action="store_true", help="Show a progress bar")
     args = parser.parse_args()
+
+    config_path = os.getenv("BB_CONFIG_PATH")
+    if config_path:
+        BBConfig.configure(config_path)
+    else:
+        demo_config_path = os.path.join(tempfile.gettempdir(), "bbconfig_demo.config")
+        if not os.path.exists(demo_config_path):
+            with open(demo_config_path, "w", encoding="utf-8") as f:
+                f.write("log_debug_mode=False\n")
+        BBConfig.configure(demo_config_path)
 
     ds = MockProgressDataSource(name="ProgressDemo", params={"progress": args.progress})
     ds.set_progress_callback(_print_progress)

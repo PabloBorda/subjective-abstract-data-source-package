@@ -7,7 +7,7 @@ import threading
 import time
 from abc import abstractmethod
 from .SubjectiveDataSource import SubjectiveDataSource
-from brainboost_data_tools_logger_package.BBLogger import BBLogger  # Ensure BBLogger is correctly implemented
+from brainboost_data_source_logger_package.BBLogger import BBLogger  # Ensure BBLogger is correctly implemented
 
 
 class SubjectiveRealTimeDataSource(SubjectiveDataSource):
@@ -55,9 +55,9 @@ class SubjectiveRealTimeDataSource(SubjectiveDataSource):
                         BBLogger.log(f"Received data: {data_dict} from {addr}")
                         self.update(data_dict)  # Notify subscribers
                     except json.JSONDecodeError:
-                        BBLogger.log(f"Invalid JSON received from {addr}: {message}", level='error')
+                        BBLogger.log(f"Invalid JSON received from {addr}: {message}")
         except asyncio.IncompleteReadError:
-            BBLogger.log(f"Connection lost with {addr}", level='warning')
+            BBLogger.log(f"Connection lost with {addr}")
         finally:
             self._connected_clients.remove(writer)
             writer.close()
@@ -245,4 +245,3 @@ class SubjectiveRealTimeDataSource(SubjectiveDataSource):
         """
         BBLogger.log(f"Fetch called on real-time data source {self.__class__.__name__}")
         self.start_monitoring()
-

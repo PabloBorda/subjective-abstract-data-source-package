@@ -19,7 +19,9 @@ requirements:
     - pip
   run:
     - python
-    - brainboost-data-tools-logger-package
+    - brainboost-data-source-logger-package
+    - brainboost-configuration-package
+    - pandas
 
 test:
   imports:
