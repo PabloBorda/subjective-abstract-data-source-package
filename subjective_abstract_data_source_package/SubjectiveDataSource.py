@@ -4,9 +4,23 @@ from brainboost_configuration_package.BBConfig import BBConfig
 import os
 import json
 from datetime import datetime
+from collections.abc import Iterable
 
 
 class SubjectiveDataSource(ABC):
+    def __init_subclass__(cls, **kwargs):
+        super().__init_subclass__(**kwargs)
+        original_fetch = cls.__dict__.get("fetch")
+        if original_fetch is None:
+            return
+
+        def wrapped_fetch(self, *args, **kwargs):
+            result = original_fetch(self, *args, **kwargs)
+            self._write_context_output_from_fetch(result)
+            return result
+
+        cls.fetch = wrapped_fetch
+
     def __init__(self, name=None, session=None, dependency_data_sources=[], subscribers=None, params=None):
         self.name = name
         self.session = session
@@ -105,6 +119,18 @@ class SubjectiveDataSource(ABC):
             os.chmod(path, 0o666)
         except Exception:
             pass
+
+    def _write_context_output_from_fetch(self, result):
+        if result is None:
+            return
+        if isinstance(result, (dict, list, str, bytes)):
+            self._write_context_output(result)
+            return
+        if isinstance(result, Iterable):
+            for item in result:
+                self._write_context_output(item)
+            return
+        self._write_context_output(result)
 
     # === Abstract methods that must be implemented by each data source ===
     @abstractmethod
