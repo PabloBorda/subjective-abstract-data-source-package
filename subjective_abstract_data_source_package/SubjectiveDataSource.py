@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
 from brainboost_data_source_logger_package.BBLogger import BBLogger
+from brainboost_configuration_package.BBConfig import BBConfig
 import os
 import json
 from datetime import datetime
-import tempfile
 
 
 class SubjectiveDataSource(ABC):
@@ -62,25 +62,37 @@ class SubjectiveDataSource(ABC):
         data_source_type_name = class_name.replace('Subjective', '').replace('RealTimeDataSource', '').replace('DataSource', '')
         return data_source_type_name
 
+    def _safe_get_config_value(self, key):
+        try:
+            return BBConfig.get(key)
+        except Exception:
+            return None
+
     def _resolve_context_path(self):
-        override = os.getenv("BB_CONTEXT_DIR")
-        if override:
-            return override
-        default_path = "/context"
-        if os.path.isdir(default_path) and os.access(default_path, os.W_OK):
-            return default_path
-        return os.path.join(tempfile.gettempdir(), "brainboost_context")
+        target_directory = self.params.get("TARGET_DIRECTORY")
+        if target_directory:
+            return target_directory
+        target_directory = self.params.get("target_directory")
+        if target_directory:
+            return target_directory
+        context_storage = self._safe_get_config_value("CONTEXT_STORAGE")
+        if context_storage:
+            return context_storage
+        return os.path.join("com_subjective_userdata", "com_subjective_context")
 
     def _write_context_output(self, data):
         context_dir = self._resolve_context_path()
-        try:
-            os.makedirs(context_dir, exist_ok=True)
-        except Exception:
-            pass
+        os.makedirs(context_dir, exist_ok=True)
 
         datasource_name = self.get_data_source_type_name()
-        ts = datetime.now().strftime('%Y%m%d%H%M%S')
-        filename = f"context-{ts}-{datasource_name}.json"
+        output_format = self._safe_get_config_value("CONTEXT_OUTPUT_FORMAT") or "json"
+        name_convention = self._safe_get_config_value("CONTEXT_FILE_NAME_CONVENTION")
+        if not name_convention:
+            name_convention = "YYYY_MM_DD_HH_MM_SS-[ds_name]-context.${CONTEXT_OUTPUT_FORMAT}"
+        ts = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
+        filename = name_convention.replace("YYYY_MM_DD_HH_MM_SS", ts)
+        filename = filename.replace("[ds_name]", datasource_name)
+        filename = filename.replace("${CONTEXT_OUTPUT_FORMAT}", output_format)
         path = os.path.join(context_dir, filename)
 
         payload = data
