@@ -40,6 +40,9 @@ class SubjectiveDataSource(ABC):
         self._fetch_completed = False
         self._configure_progress_from_params()
 
+        # Set unique BBLogger process name for this datasource
+        BBLogger._process_name = self.get_data_source_type_name()
+
     def start(self):
         for ds in self.dependency_data_sources:
             ds.subscribe(self)
