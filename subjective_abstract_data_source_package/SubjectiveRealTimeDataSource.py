@@ -30,7 +30,78 @@ class SubjectiveRealTimeDataSource(SubjectiveDataSource):
         self._thread.start()
         self._monitoring_active = False
         self._monitoring_thread = None
+        self._reconnect_enabled = True
+        self._reconnect_initial_delay = self._coerce_float_param("reconnect_initial_delay", 1.0)
+        self._reconnect_max_delay = self._coerce_float_param("reconnect_max_delay", 30.0)
+        self._reconnect_jitter = self._coerce_float_param("reconnect_jitter", 0.2)
+        self._reconnect_max_attempts = self._coerce_int_param("reconnect_max_attempts", -1)
         BBLogger.log("Asyncio event loop started in a separate thread.")
+
+    def _coerce_float_param(self, key, default):
+        try:
+            value = self.params.get(key, default)
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    def _coerce_int_param(self, key, default):
+        try:
+            value = self.params.get(key, default)
+            return int(value)
+        except (TypeError, ValueError):
+            return int(default)
+
+    def _get_reconnect_delay(self, attempt):
+        # Exponential backoff with a small jitter to avoid synchronized retries.
+        base_delay = min(self._reconnect_initial_delay * (2 ** max(attempt - 1, 0)), self._reconnect_max_delay)
+        jitter = base_delay * self._reconnect_jitter
+        return max(0.0, base_delay + (jitter * (0.5 - time.time() % 1)))
+
+    def _should_retry(self, attempt):
+        if not self._reconnect_enabled:
+            return False
+        if self._reconnect_max_attempts < 0:
+            return True
+        return attempt <= self._reconnect_max_attempts
+
+    def _run_with_reconnect(self, connect_fn, run_fn, disconnect_fn=None, label="real-time stream"):
+        """
+        Run a real-time stream with automatic reconnects.
+
+        connect_fn: callable invoked before run_fn for each attempt.
+        run_fn: blocking callable that runs the stream until it ends or raises.
+        disconnect_fn: optional callable to clean up the connection between attempts.
+        """
+        attempt = 0
+        while self._monitoring_active:
+            attempt += 1
+            try:
+                BBLogger.log(f"{label} - starting (attempt {attempt})")
+                if connect_fn:
+                    connect_fn()
+                run_fn()
+                if not self._monitoring_active:
+                    break
+                BBLogger.log(f"{label} - ended; preparing to reconnect")
+            except Exception as e:
+                if not self._monitoring_active:
+                    break
+                BBLogger.log(f"{label} - error: {e}")
+            finally:
+                if disconnect_fn:
+                    try:
+                        disconnect_fn()
+                    except Exception as cleanup_err:
+                        BBLogger.log(f"{label} - cleanup error: {cleanup_err}")
+
+            if not self._should_retry(attempt):
+                BBLogger.log(f"{label} - reconnect disabled or max attempts reached")
+                break
+
+            delay = self._get_reconnect_delay(attempt)
+            if delay > 0:
+                BBLogger.log(f"{label} - reconnecting in {delay:.2f}s")
+                time.sleep(delay)
 
     def _run_loop(self):
         """Run the asyncio event loop."""
