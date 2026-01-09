@@ -342,7 +342,15 @@ class SubjectiveRealTimeDataSource(SubjectiveDataSource):
     def fetch(self):
         """
         Implement the abstract fetch method. For real-time data sources,
-        this typically starts monitoring rather than fetching static data.
+        this starts monitoring and keeps running until monitoring stops.
         """
         BBLogger.log(f"Fetch called on real-time data source {self.__class__.__name__}")
         self.start_monitoring()
+
+        # Wait for the monitoring thread to complete (blocks until stop_monitoring is called)
+        if self._monitoring_thread and self._monitoring_thread.is_alive():
+            try:
+                self._monitoring_thread.join()
+            except KeyboardInterrupt:
+                BBLogger.log(f"Fetch interrupted, stopping monitoring")
+                self.stop_monitoring()
