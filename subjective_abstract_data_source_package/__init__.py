@@ -11,6 +11,8 @@ Classes:
 
 from .SubjectiveDataSource import SubjectiveDataSource
 from .SubjectiveRealTimeDataSource import SubjectiveRealTimeDataSource
+from .SubjectiveDataSourcePipeline import SubjectiveDataSourcePipeline, PipelineNode, PipelineAdapter
+from .SubjectivePipelineDataSource import SubjectivePipelineDataSource
 
 __version__ = "1.0.0"
 __author__ = "Pablo Tomas Borda"
@@ -18,5 +20,9 @@ __email__ = "pablo.borda@subjectivetechnologies.com"
 
 __all__ = [
     "SubjectiveDataSource",
-    "SubjectiveRealTimeDataSource"
+    "SubjectiveRealTimeDataSource",
+    "SubjectiveDataSourcePipeline",
+    "PipelineNode",
+    "PipelineAdapter",
+    "SubjectivePipelineDataSource"
 ] 

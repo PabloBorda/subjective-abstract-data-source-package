@@ -176,14 +176,21 @@ class SubjectiveRealTimeDataSource(SubjectiveDataSource):
         if self._monitoring_active:
             BBLogger.log("Monitoring is already active")
             return
-            
+
         BBLogger.log(f"Starting monitoring for {self.__class__.__name__}")
         self._monitoring_active = True
-        
-        # Start the monitoring implementation
+
+        # Start the monitoring implementation in a separate thread
         try:
             self._initialize_monitoring()
-            self._start_monitoring_implementation()
+
+            # Run monitoring implementation in background thread
+            self._monitoring_thread = threading.Thread(
+                target=self._start_monitoring_implementation,
+                daemon=True
+            )
+            self._monitoring_thread.start()
+
             BBLogger.log(f"Monitoring started successfully for {self.__class__.__name__}")
         except Exception as e:
             self._monitoring_active = False
@@ -216,10 +223,33 @@ class SubjectiveRealTimeDataSource(SubjectiveDataSource):
     def _start_monitoring_implementation(self):
         """
         Implementation-specific monitoring start. Override in subclasses.
-        Default implementation starts the TCP server and mock data.
+
+        Subclasses can either:
+        1. Override this method directly for simple monitoring (default behavior)
+        2. Implement _connect_stream, _run_stream, and optionally _disconnect_stream
+           methods, which will be automatically wrapped with reconnection logic.
         """
-        self._start_server()
-        self._schedule_mock_update()
+        # Check if subclass has implemented stream methods for reconnection
+        has_connect = hasattr(self, '_connect_stream') and callable(getattr(self, '_connect_stream'))
+        has_run = hasattr(self, '_run_stream') and callable(getattr(self, '_run_stream'))
+
+        if has_connect and has_run:
+            # Use reconnection wrapper for stream-based monitoring
+            connect_fn = self._connect_stream
+            run_fn = self._run_stream
+            disconnect_fn = getattr(self, '_disconnect_stream', None) if hasattr(self, '_disconnect_stream') else None
+            label = getattr(self, '_stream_label', f"{self.__class__.__name__} stream")
+
+            self._run_with_reconnect(
+                connect_fn=connect_fn,
+                run_fn=run_fn,
+                disconnect_fn=disconnect_fn,
+                label=label
+            )
+        else:
+            # Default implementation for non-stream monitoring
+            self._start_server()
+            self._schedule_mock_update()
 
     def _stop_monitoring_implementation(self):
         """
