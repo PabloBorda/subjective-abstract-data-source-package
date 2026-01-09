@@ -142,12 +142,12 @@ class SubjectiveDataSource(ABC):
         pass
 
     @abstractmethod
-    def get_icon(self):
+    def get_icon(self) -> str:
         """Return the SVG code for the data source icon."""
         pass
 
     @abstractmethod
-    def get_connection_data(self):
+    def get_connection_data(self) -> dict:
         """
         Return the connection type and required fields for this data source.
         This should return a dictionary with connection type and fields.
