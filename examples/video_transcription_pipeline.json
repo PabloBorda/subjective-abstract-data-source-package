@@ -24,5 +24,28 @@
       "filter": "data.get('event_type') == 'created' and str(data.get('path', '')).endswith(('.mp4', '.mkv'))",
       "transform": "data"
     }
-  ]
+  ],
+  "workbench": {
+    "saved_at": "2026-01-09T16:00:00",
+    "nodes": [
+      {
+        "node_id": "local_videos_folder",
+        "position": {"x": 400, "y": 600},
+        "display_name": "Video Folder Monitor"
+      },
+      {
+        "node_id": "video_transcriber",
+        "position": {"x": 400, "y": 400},
+        "display_name": "Video Transcriber"
+      }
+    ],
+    "connections": [
+      {
+        "from_node": "video_transcriber",
+        "to_node": "local_videos_folder",
+        "from_point": "bottom",
+        "to_point": "top"
+      }
+    ]
+  }
 }
