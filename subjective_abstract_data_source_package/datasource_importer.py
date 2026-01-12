@@ -24,16 +24,20 @@ except ImportError:
             print(f"[DataSourceImporter] {msg}")
 
 try:
-    from brainboost_config_package.BBConfig import BBConfig
+    from brainboost_configuration_package.BBConfig import BBConfig
 except ImportError:
-    class BBConfig:
-        @staticmethod
-        def get(key, default):
-            return default
+    try:
+        from brainboost_config_package.BBConfig import BBConfig
+    except ImportError:
+        class BBConfig:
+            @staticmethod
+            def get(key, default):
+                return default
 
 
 def calculate_abs_path(path: str) -> str:
     """Calculate absolute path, handling relative paths."""
+    path = os.path.expandvars(path)
     if os.path.isabs(path):
         return path
     # Assume relative to current working directory
@@ -79,10 +83,19 @@ def import_datasource_class(ds_class_name: str, project_root: Optional[str] = No
         BBLogger.log(f"Attempting to import from data_source_installed_plugins")
 
         # Get the plugins directory path
-        installed_plugins_dir = BBConfig.get(
-            "DATASOURCES_PLUGIN_PATH",
-            os.path.join(project_root, "data_source_installed_plugins")
-        )
+        configured_plugins_dir = BBConfig.get("DATASOURCES_PLUGIN_PATH", "")
+        if configured_plugins_dir:
+            configured_plugins_dir = os.path.expandvars(str(configured_plugins_dir))
+            if "${USERDATA_PATH}" in configured_plugins_dir:
+                configured_plugins_dir = configured_plugins_dir.replace(
+                    "${USERDATA_PATH}",
+                    os.path.join(project_root, "com_subjective_userdata")
+                )
+            installed_plugins_dir = calculate_abs_path(configured_plugins_dir)
+        else:
+            installed_plugins_dir = os.path.join(project_root, "com_subjective_userdata", "com_subjective_plugins")
+            if not os.path.isdir(installed_plugins_dir):
+                installed_plugins_dir = os.path.join(project_root, "data_source_installed_plugins")
         installed_plugins_dir = calculate_abs_path(str(installed_plugins_dir))
         BBLogger.log(f"Scanning installed plugins directory: {installed_plugins_dir}")
 
@@ -96,7 +109,7 @@ def import_datasource_class(ds_class_name: str, project_root: Optional[str] = No
                             # Check if this file contains the class we're looking for
                             file_path = os.path.join(plugin_path, file)
                             try:
-                                with open(file_path, 'r', encoding='utf-8') as f:
+                                with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
                                     file_content = f.read()
                                     if f"class {ds_class_name}" in file_content:
                                         BBLogger.log(f"Found {ds_class_name} in {file} in {plugin_dir}")
