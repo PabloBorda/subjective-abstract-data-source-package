@@ -6,10 +6,11 @@ This allows pipelines to be managed from the UI like any other data source.
 """
 
 import json
-import importlib
+import os
 from typing import Dict, Any, Optional
 from subjective_abstract_data_source_package import SubjectiveDataSource
 from subjective_abstract_data_source_package.SubjectiveDataSourcePipeline import SubjectiveDataSourcePipeline
+from subjective_abstract_data_source_package.datasource_importer import import_datasource_class
 from brainboost_data_source_logger_package.BBLogger import BBLogger
 
 
@@ -200,16 +201,18 @@ class SubjectivePipelineDataSource(SubjectiveDataSource):
         module_path = node_config.get('module')
         class_name = node_config.get('class')
 
-        if not module_path or not class_name:
-            raise ValueError(f"Node '{node_id}' must specify 'module' and 'class'")
+        if not class_name:
+            raise ValueError(f"Node '{node_id}' must specify 'class'")
 
-        # Load the data source class
+        # Load the data source class using the shared importer
+        # This will search data_source_addons, data_source_installed_plugins, and abstract package
         try:
-            module = importlib.import_module(module_path)
-            data_source_class = getattr(module, class_name)
-        except (ImportError, AttributeError) as e:
-            BBLogger.log(f"Failed to load class {class_name} from {module_path}: {e}")
-            raise ValueError(f"Could not load data source class: {e}")
+            BBLogger.log(f"Importing data source class '{class_name}' for node '{node_id}'")
+            data_source_class = import_datasource_class(class_name, project_root=os.getcwd())
+            BBLogger.log(f"Successfully imported class '{class_name}'")
+        except ImportError as e:
+            BBLogger.log(f"Failed to load class {class_name}: {e}")
+            raise ValueError(f"Could not load data source class '{class_name}': {e}")
 
         # Get parameters
         params = node_config.get('params', {})
