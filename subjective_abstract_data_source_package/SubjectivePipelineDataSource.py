@@ -126,22 +126,22 @@ class SubjectivePipelineDataSource(SubjectiveDataSource):
         """
         Load pipeline configuration from params.
         """
-        # Try to load from inline JSON first
-        pipeline_json = self.params.get('pipeline_json')
+        # Try to load from inline JSON first (support pipeline_json and pipeline_data)
+        pipeline_json = self.params.get('pipeline_json') or self.params.get('pipeline_data')
         if pipeline_json:
             try:
                 if isinstance(pipeline_json, str):
                     self.pipeline_config = json.loads(pipeline_json)
                 else:
                     self.pipeline_config = pipeline_json
-                BBLogger.log("Loaded pipeline config from inline JSON")
+                BBLogger.log("Loaded pipeline config from inline JSON/data")
                 return
             except json.JSONDecodeError as e:
                 BBLogger.log(f"Error parsing inline pipeline JSON: {e}")
                 raise ValueError(f"Invalid pipeline JSON: {e}")
 
-        # Try to load from file path
-        pipeline_json_path = self.params.get('pipeline_json_path')
+        # Try to load from file path (support both pipeline_json_path and pipeline_file)
+        pipeline_json_path = self.params.get('pipeline_json_path') or self.params.get('pipeline_file')
         if pipeline_json_path:
             try:
                 with open(pipeline_json_path, 'r', encoding='utf-8') as f:
@@ -152,7 +152,7 @@ class SubjectivePipelineDataSource(SubjectiveDataSource):
                 BBLogger.log(f"Error loading pipeline from file: {e}")
                 raise ValueError(f"Could not load pipeline from file: {e}")
 
-        raise ValueError("No pipeline configuration provided (pipeline_json or pipeline_json_path)")
+        raise ValueError("No pipeline configuration provided (pipeline_json, pipeline_json_path, or pipeline_file)")
 
     def _build_pipeline_from_config(self):
         """
