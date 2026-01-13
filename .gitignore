@@ -16,7 +16,6 @@ env/
 myenv/
 
 # IDE
-.vscode/
 .idea/
 
 # OS
