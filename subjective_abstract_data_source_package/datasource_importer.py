@@ -35,13 +35,28 @@ except ImportError:
                 return default
 
 
-def calculate_abs_path(path: str) -> str:
+def _find_project_root(start_dir: str) -> str:
+    """Walk upwards to find a Subjective project root."""
+    current = os.path.abspath(start_dir)
+    fallback_userdata_root = None
+    while True:
+        if os.path.isfile(os.path.join(current, "subjective.conf")):
+            return current
+        if fallback_userdata_root is None and os.path.isdir(os.path.join(current, "com_subjective_userdata")):
+            fallback_userdata_root = current
+        parent = os.path.dirname(current)
+        if parent == current:
+            return fallback_userdata_root or os.path.abspath(start_dir)
+        current = parent
+
+
+def calculate_abs_path(path: str, base_dir: Optional[str] = None) -> str:
     """Calculate absolute path, handling relative paths."""
     path = os.path.expandvars(path)
     if os.path.isabs(path):
         return path
-    # Assume relative to current working directory
-    return os.path.abspath(path)
+    base = os.path.abspath(base_dir or os.getcwd())
+    return os.path.abspath(os.path.join(base, path))
 
 
 def import_datasource_class(ds_class_name: str, project_root: Optional[str] = None) -> Type:
@@ -65,6 +80,7 @@ def import_datasource_class(ds_class_name: str, project_root: Optional[str] = No
     """
     if project_root is None:
         project_root = os.getcwd()
+    project_root = _find_project_root(project_root)
 
     ds_class = None
 
@@ -91,12 +107,12 @@ def import_datasource_class(ds_class_name: str, project_root: Optional[str] = No
                     "${USERDATA_PATH}",
                     os.path.join(project_root, "com_subjective_userdata")
                 )
-            installed_plugins_dir = calculate_abs_path(configured_plugins_dir)
+            installed_plugins_dir = calculate_abs_path(configured_plugins_dir, base_dir=project_root)
         else:
             installed_plugins_dir = os.path.join(project_root, "com_subjective_userdata", "com_subjective_plugins")
             if not os.path.isdir(installed_plugins_dir):
                 installed_plugins_dir = os.path.join(project_root, "data_source_installed_plugins")
-        installed_plugins_dir = calculate_abs_path(str(installed_plugins_dir))
+        installed_plugins_dir = calculate_abs_path(str(installed_plugins_dir), base_dir=project_root)
         BBLogger.log(f"Scanning installed plugins directory: {installed_plugins_dir}")
 
         if os.path.exists(installed_plugins_dir):

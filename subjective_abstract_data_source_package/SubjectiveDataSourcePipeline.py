@@ -104,6 +104,12 @@ class PipelineAdapter:
         except Exception as e:
             BBLogger.log(f"Error in PipelineAdapter for {self.pipeline_node.node_id}: {e}")
 
+    def notify(self, data: Any):
+        """
+        Alias used by some data sources when pushing updates to subscribers.
+        """
+        self.update(data)
+
 
 class SubjectiveDataSourcePipeline(SubjectiveDataSource):
     """
@@ -456,12 +462,28 @@ class SubjectiveDataSourcePipeline(SubjectiveDataSource):
                     for dep_id in node.dependencies
                 ]
 
-                # Create the data source instance
-                node.instance = node.data_source_class(
-                    name=node_id,
-                    dependency_data_sources=dependency_instances,
-                    params=node.params
-                )
+                # Create the data source instance, trimming args to supported signature.
+                init_kwargs = {
+                    "name": node_id,
+                    "dependency_data_sources": dependency_instances,
+                    "params": node.params,
+                }
+                try:
+                    import inspect
+                    signature = inspect.signature(node.data_source_class.__init__)
+                    params = signature.parameters
+                    accepts_var_kw = any(
+                        p.kind == p.VAR_KEYWORD for p in params.values()
+                    )
+                    if not accepts_var_kw:
+                        init_kwargs = {k: v for k, v in init_kwargs.items() if k in params}
+                except Exception:
+                    pass
+
+                if init_kwargs:
+                    node.instance = node.data_source_class(**init_kwargs)
+                else:
+                    node.instance = node.data_source_class()
 
                 BBLogger.log(f"Instantiated {node.data_source_class.__name__} for node '{node_id}'")
 
