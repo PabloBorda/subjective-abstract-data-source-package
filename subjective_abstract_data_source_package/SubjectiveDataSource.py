@@ -27,6 +27,7 @@ class SubjectiveDataSource(ABC):
         self.dependency_data_sources = dependency_data_sources
         self.subscribers = subscribers or []
         self.params = params or {}
+        self._ensure_context_params()
         self.progress_callback = None  # Initialize the progress callback to None
         self.status_callback = None    # Initialize the status callback to None
         self._progress_enabled = False
@@ -85,6 +86,29 @@ class SubjectiveDataSource(ABC):
         except Exception:
             return None
 
+    def _ensure_context_params(self):
+        if not isinstance(self.params, dict):
+            return
+        context_value = None
+        for key in ("context_dir", "TARGET_DIRECTORY", "target_directory", "CONTEXT_DIR"):
+            value = self.params.get(key)
+            if value:
+                context_value = value
+                break
+        if not context_value:
+            context_value = self._get_default_context_path()
+        if not context_value:
+            return
+        for key in ("context_dir", "TARGET_DIRECTORY", "target_directory", "CONTEXT_DIR"):
+            if not self.params.get(key):
+                self.params[key] = context_value
+
+    def _get_default_context_path(self):
+        context_storage = self._safe_get_config_value("CONTEXT_STORAGE")
+        if context_storage:
+            return context_storage
+        return os.path.join("com_subjective_userdata", "com_subjective_context")
+
     def _resolve_context_path(self):
         target_directory = self.params.get("TARGET_DIRECTORY")
         if target_directory:
@@ -92,10 +116,7 @@ class SubjectiveDataSource(ABC):
         target_directory = self.params.get("target_directory")
         if target_directory:
             return target_directory
-        context_storage = self._safe_get_config_value("CONTEXT_STORAGE")
-        if context_storage:
-            return context_storage
-        return os.path.join("com_subjective_userdata", "com_subjective_context")
+        return self._get_default_context_path()
 
     def _write_context_output(self, data):
         context_dir = self._resolve_context_path()
