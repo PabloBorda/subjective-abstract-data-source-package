@@ -143,6 +143,7 @@ class SubjectiveDataSource(ABC):
             os.chmod(path, 0o666)
         except Exception:
             pass
+        return path
 
     def _write_context_output_from_fetch(self, result):
         if result is None:
