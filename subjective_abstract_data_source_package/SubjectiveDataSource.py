@@ -42,7 +42,7 @@ class SubjectiveDataSource(ABC):
         self._configure_progress_from_params()
 
         # Set unique BBLogger process name for this datasource
-        BBLogger._process_name = self.get_data_source_type_name()
+        BBLogger._process_name = self._get_log_process_name()
 
     def start(self):
         for ds in self.dependency_data_sources:
@@ -79,6 +79,31 @@ class SubjectiveDataSource(ABC):
         class_name = self.__class__.__name__
         data_source_type_name = class_name.replace('Subjective', '').replace('RealTimeDataSource', '').replace('DataSource', '')
         return data_source_type_name
+
+    def _sanitize_label(self, value):
+        return "".join(ch if ch.isalnum() or ch in ("-", "_") else "_" for ch in value)
+
+    def _get_connection_label(self):
+        if not isinstance(self.params, dict):
+            return None
+        connection_name = (
+            self.params.get("connection_name")
+            or self.params.get("connectionName")
+            or self.params.get("connection")
+        )
+        if not connection_name:
+            return None
+        connection_name = str(connection_name).strip()
+        if not connection_name:
+            return None
+        return self._sanitize_label(connection_name)
+
+    def _get_log_process_name(self):
+        datasource_name = self.get_data_source_type_name()
+        connection_label = self._get_connection_label()
+        if connection_label:
+            return f"{datasource_name}-{connection_label}"
+        return datasource_name
 
     def _safe_get_config_value(self, key):
         try:
@@ -127,9 +152,14 @@ class SubjectiveDataSource(ABC):
         name_convention = self._safe_get_config_value("CONTEXT_FILE_NAME_CONVENTION")
         if not name_convention:
             name_convention = "YYYY_MM_DD_HH_MM_SS-[ds_name]-context.${CONTEXT_OUTPUT_FORMAT}"
+        connection_label = self._get_connection_label()
+        if connection_label and "[connection_name]" not in name_convention:
+            datasource_name = f"{datasource_name}-{connection_label}"
         ts = datetime.now().strftime('%Y_%m_%d_%H_%M_%S')
         filename = name_convention.replace("YYYY_MM_DD_HH_MM_SS", ts)
         filename = filename.replace("[ds_name]", datasource_name)
+        if "[connection_name]" in filename:
+            filename = filename.replace("[connection_name]", connection_label or "unknown")
         filename = filename.replace("${CONTEXT_OUTPUT_FORMAT}", output_format)
         path = os.path.join(context_dir, filename)
 
