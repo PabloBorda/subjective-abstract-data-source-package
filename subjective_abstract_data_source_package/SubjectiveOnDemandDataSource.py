@@ -45,6 +45,7 @@ class SubjectiveOnDemandDataSource(SubjectiveDataSource):
         # Processing thread
         self._processing_thread: Optional[threading.Thread] = None
         self._processing_active: bool = False
+        self._shutdown_event = threading.Event()
 
         # Conversation history for chat-like interactions
         self._conversation_history: List[Dict[str, Any]] = []
@@ -194,6 +195,7 @@ class SubjectiveOnDemandDataSource(SubjectiveDataSource):
             return
 
         self._processing_active = True
+        self._shutdown_event.clear()
         self._processing_thread = threading.Thread(
             target=self._processing_loop,
             daemon=True,
@@ -228,10 +230,23 @@ class SubjectiveOnDemandDataSource(SubjectiveDataSource):
     def stop(self):
         """Stop the message processing loop."""
         self._processing_active = False
+        self._shutdown_event.set()
         if self._processing_thread:
             self._processing_thread.join(timeout=5.0)
             self._processing_thread = None
         BBLogger.log(f"Processing loop stopped for {self.get_name()}")
+
+    def wait_until_stopped(self, timeout: Optional[float] = None) -> bool:
+        """
+        Block until the data source is stopped.
+
+        Args:
+            timeout: Maximum time to wait in seconds (None for no limit)
+
+        Returns:
+            True if stop was observed, False if the timeout elapsed.
+        """
+        return self._shutdown_event.wait(timeout=timeout)
 
     def wait_for_pending(self, timeout: Optional[float] = None):
         """
