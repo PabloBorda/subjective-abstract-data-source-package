@@ -3,6 +3,9 @@ from brainboost_data_source_logger_package.BBLogger import BBLogger
 from .SubjectiveDataSource import SubjectiveDataSource
 from collections.abc import Callable
 from typing import Any, Optional, List, Dict
+import base64
+import mimetypes
+import os
 import threading
 import queue
 import time
@@ -80,19 +83,52 @@ class SubjectiveOnDemandDataSource(SubjectiveDataSource):
             In sync mode: The response from the data source
             In async mode: None (response delivered via callback)
         """
-        BBLogger.log(f"Sending message to {self.get_name()}: {str(message)[:100]}...")
+        BBLogger.log(f"[{self.get_name()}] send_message() called with message type: {type(message)}, value: {str(message)[:200]}...")
 
         # Add to conversation history
         self._add_to_history("user", message)
 
         if self._async_mode:
+            BBLogger.log(f"[{self.get_name()}] Async mode: queueing message for processing")
             # Queue the message for async processing
             self._message_queue.put(message)
             self._ensure_processing_loop()
+            BBLogger.log(f"[{self.get_name()}] Message queued, returning None (response via callback)")
             return None
         else:
+            BBLogger.log(f"[{self.get_name()}] Sync mode: processing message immediately")
             # Process synchronously
-            return self._handle_message(message)
+            response = self._handle_message(message)
+            BBLogger.log(f"[{self.get_name()}] Sync mode: response received: {str(response)[:200]}...")
+            return response
+
+    def send_message_with_files(
+        self,
+        message: Any,
+        files: Optional[List[str]] = None,
+        file_payloads: Optional[List[Dict[str, Any]]] = None
+    ) -> Optional[Any]:
+        """
+        Send a message along with file attachments.
+
+        Args:
+            message: The message to send (string, dict, or any serializable object)
+            files: List of file paths to attach
+            file_payloads: Pre-built file payloads (dicts) to attach
+
+        Returns:
+            In sync mode: The response from the data source
+            In async mode: None (response delivered via callback)
+        """
+        payload_files = self._prepare_file_payloads(files, file_payloads)
+        if not payload_files:
+            return self.send_message(message)
+
+        payload = {
+            "content": message,
+            "files": payload_files
+        }
+        return self.send_message(payload)
 
     def set_response_callback(self, callback: Callable[[Any], None]):
         """
@@ -145,10 +181,13 @@ class SubjectiveOnDemandDataSource(SubjectiveDataSource):
             The response from _process_message
         """
         start_time = time.time()
+        BBLogger.log(f"[{self.get_name()}] _handle_message() called with message: {str(message)[:200]}...")
 
         try:
             # Process the message (implemented by subclass)
+            BBLogger.log(f"[{self.get_name()}] Calling _process_message() to process the request")
             response = self._process_message(message)
+            BBLogger.log(f"[{self.get_name()}] _process_message() returned response type: {type(response)}, value: {str(response)[:300]}...")
 
             # Track processing time
             processing_time = time.time() - start_time
@@ -168,24 +207,35 @@ class SubjectiveOnDemandDataSource(SubjectiveDataSource):
 
             # Call response callback if set
             if self._response_callback:
+                BBLogger.log(f"[{self.get_name()}] Response callback is set, calling it with response")
                 try:
                     self._response_callback(response)
+                    BBLogger.log(f"[{self.get_name()}] Response callback completed successfully")
                 except Exception as e:
-                    BBLogger.log(f"Response callback failed: {e}")
+                    import traceback
+                    BBLogger.log(f"[{self.get_name()}] Response callback failed: {e}\n{traceback.format_exc()}")
+            else:
+                BBLogger.log(f"[{self.get_name()}] WARNING: No response callback set - response will not be delivered")
 
-            BBLogger.log(f"Message processed in {processing_time:.2f}s")
+            BBLogger.log(f"[{self.get_name()}] Message processed successfully in {processing_time:.2f}s")
             return response
 
         except Exception as e:
-            BBLogger.log(f"Error processing message: {e}")
+            import traceback
+            BBLogger.log(f"[{self.get_name()}] Error processing message: {e}\n{traceback.format_exc()}")
             error_response = {"error": str(e), "message": message}
             self._add_to_history("error", error_response)
 
             if self._response_callback:
+                BBLogger.log(f"[{self.get_name()}] Calling error callback with error response")
                 try:
                     self._response_callback(error_response)
+                    BBLogger.log(f"[{self.get_name()}] Error callback completed")
                 except Exception as cb_error:
-                    BBLogger.log(f"Error callback failed: {cb_error}")
+                    import traceback
+                    BBLogger.log(f"[{self.get_name()}] Error callback failed: {cb_error}\n{traceback.format_exc()}")
+            else:
+                BBLogger.log(f"[{self.get_name()}] WARNING: No response callback set - error response will not be delivered")
 
             return error_response
 
@@ -213,19 +263,23 @@ class SubjectiveOnDemandDataSource(SubjectiveDataSource):
 
     def _processing_loop(self):
         """Main loop for async message processing."""
-        BBLogger.log(f"Processing loop running for {self.get_name()}")
+        BBLogger.log(f"[{self.get_name()}] Processing loop running for {self.get_name()}")
 
         while self._processing_active:
             try:
                 # Wait for a message with timeout
+                BBLogger.log(f"[{self.get_name()}] Waiting for message in queue...")
                 message = self._message_queue.get(timeout=1.0)
+                BBLogger.log(f"[{self.get_name()}] Message retrieved from queue: {str(message)[:200]}...")
                 self._handle_message(message)
                 self._message_queue.task_done()
+                BBLogger.log(f"[{self.get_name()}] Message processing completed, waiting for next message")
             except queue.Empty:
                 # No message, continue waiting
                 continue
             except Exception as e:
-                BBLogger.log(f"Processing loop error: {e}")
+                import traceback
+                BBLogger.log(f"[{self.get_name()}] Processing loop error: {e}\n{traceback.format_exc()}")
 
     def stop(self):
         """Stop the message processing loop."""
@@ -256,6 +310,69 @@ class SubjectiveOnDemandDataSource(SubjectiveDataSource):
             timeout: Maximum time to wait in seconds (None for no limit)
         """
         self._message_queue.join()
+
+    def _prepare_file_payloads(
+        self,
+        files: Optional[List[str]] = None,
+        file_payloads: Optional[List[Dict[str, Any]]] = None
+    ) -> List[Dict[str, Any]]:
+        payloads: List[Dict[str, Any]] = []
+
+        if file_payloads:
+            for payload in file_payloads:
+                if isinstance(payload, dict):
+                    payloads.append(dict(payload))
+
+        if not files:
+            return payloads
+
+        max_bytes = int(self.params.get("max_attachment_bytes", 5 * 1024 * 1024))
+        max_text_chars = int(self.params.get("max_attachment_text_chars", 20000))
+
+        for path in files:
+            if not path:
+                continue
+            try:
+                abs_path = os.path.abspath(path)
+                if not os.path.isfile(abs_path):
+                    continue
+                size = os.path.getsize(abs_path)
+                mime_type, _ = mimetypes.guess_type(abs_path)
+                mime_type = mime_type or "application/octet-stream"
+
+                payload: Dict[str, Any] = {
+                    "name": os.path.basename(abs_path),
+                    "path": abs_path,
+                    "size": size,
+                    "mime_type": mime_type
+                }
+
+                with open(abs_path, "rb") as f:
+                    data = f.read(max_bytes + 1)
+
+                is_text = mime_type.startswith("text/") or os.path.splitext(abs_path)[1].lower() in (
+                    ".txt", ".md", ".csv", ".log", ".json", ".yaml", ".yml", ".xml"
+                )
+
+                if is_text:
+                    text = data.decode("utf-8", errors="ignore")
+                    truncated = len(text) > max_text_chars or len(data) > max_bytes
+                    if truncated:
+                        text = text[:max_text_chars]
+                    payload["text"] = text
+                    payload["text_truncated"] = truncated
+                else:
+                    truncated = len(data) > max_bytes
+                    if truncated:
+                        data = data[:max_bytes]
+                    payload["data_base64"] = base64.b64encode(data).decode("ascii")
+                    payload["data_truncated"] = truncated
+
+                payloads.append(payload)
+            except Exception:
+                continue
+
+        return payloads
 
     # === Abstract methods that must be implemented by subclasses ===
 
