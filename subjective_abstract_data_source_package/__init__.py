@@ -13,6 +13,7 @@ Classes:
 from .SubjectiveDataSource import SubjectiveDataSource
 from .SubjectiveRealTimeDataSource import SubjectiveRealTimeDataSource
 from .SubjectiveOnDemandDataSource import SubjectiveOnDemandDataSource
+from .SubjectiveTickDataSource import SubjectiveTickDataSource
 from .SubjectivePipelineDataSource import SubjectiveDataSourcePipeline, PipelineNode, PipelineAdapter
 from .SubjectivePipelineDataSource import SubjectivePipelineDataSource
 
@@ -24,6 +25,7 @@ __all__ = [
     "SubjectiveDataSource",
     "SubjectiveRealTimeDataSource",
     "SubjectiveOnDemandDataSource",
+    "SubjectiveTickDataSource",
     "SubjectiveDataSourcePipeline",
     "PipelineNode",
     "PipelineAdapter",
