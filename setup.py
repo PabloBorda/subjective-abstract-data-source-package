@@ -23,6 +23,20 @@ def get_version():
                     return line.split('=')[1].strip().strip('"\'')
     return "1.0.0"
 
+def read_requirements():
+    req_path = os.path.join(os.path.dirname(__file__), 'requirements.txt')
+    if not os.path.exists(req_path):
+        return []
+
+    requirements = []
+    with open(req_path, 'r', encoding='utf-8') as f:
+        for line in f:
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            requirements.append(line)
+    return requirements
+
 setup(
     name="subjective-abstract-data-source-package",
     version=get_version(),
@@ -48,12 +62,7 @@ setup(
         "Topic :: Scientific/Engineering :: Information Analysis",
     ],
     python_requires=">=3.8",
-    install_requires=[
-        "brainboost-data-source-logger-package @ git+ssh://git@github.com/PabloBorda/brainboost_data_source_logger_package.git",
-        "brainboost-configuration-package @ git+ssh://git@github.com/PabloBorda/brainboost_configuration_package.git",
-        "alive-progress>=3.1.5",
-        "pandas>=1.5.0",
-    ],
+    install_requires=read_requirements(),
     extras_require={
         "dev": [
             "pytest>=6.0",
@@ -76,3 +85,4 @@ setup(
     include_package_data=True,
     zip_safe=False,
 ) 
+
